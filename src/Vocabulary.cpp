@@ -2,6 +2,7 @@
 #include "DescManip.h"
 #include "quicklz.h"
 #include <sstream>
+#include <fstream>
 #include "timers.h"
 namespace DBoW3{
 // --------------------------------------------------------------------------
@@ -1060,6 +1061,31 @@ int Vocabulary::stopWords(double minWeight)
 
 // --------------------------------------------------------------------------
 
+void Vocabulary::saveToTextFile (const std::string &filename) const
+{
+    std::fstream f;
+    f.open(filename.c_str(),std::ios_base::out);
+    // The first line prints the number of branches, depth, scoring method, and weight calculation method of the tree
+    //m_k type is int, m_L type is int, m_scoring is an enumeration type, where 0 indicates the similarity calculation method L1_NORM, m_weighting is an enumeration type, where 0 indicates the weight TF_IDF;
+    f << m_k << " " << m_L << " " << " " << m_scoring << " " << m_weighting << std::endl;
+
+    for(size_t i=1; i<m_nodes.size();i++)
+    {
+        const Node& node = m_nodes[i];
+
+        //Starting from the second line, the first number in each line is the parent node id
+        f << node.parent << " ";
+        //The second number in each line indicates whether it is a leaf (1) or not (0)
+        if(node.isLeaf())
+            f << 1 << " ";
+        else
+            f << 0 << " ";
+        // Next, store the 256-bit descriptor, and finally store the node weight (only leaves have non-zero values)
+        f << DescManip::toString(node.descriptor) << " " << (double)node.weight << std::endl;
+    }
+
+    f.close();
+}
 
 void Vocabulary::save(const std::string &filename,  bool binary_compressed) const
 {
@@ -1085,13 +1111,13 @@ void Vocabulary::load(const std::string &filename)
     std::ifstream ifile(filename,std::ios::binary);
     if (!ifile) throw std::runtime_error("Vocabulary::load Could not open file :"+filename+" for reading");
     if(!load(ifile)) {
-        if ( filename.find(".txt")!=std::string::npos) {
-	    load_fromtxt(filename);
-	} else {
-	    cv::FileStorage fs(filename.c_str(), cv::FileStorage::READ);
-	    if(!fs.isOpened()) throw std::string("Could not open file ") + filename;
-	    load(fs);
-	}
+      if ( filename.find(".txt")!=std::string::npos) {
+        load_fromtxt(filename);
+      } else {
+        cv::FileStorage fs(filename.c_str(), cv::FileStorage::READ);
+        if(!fs.isOpened()) throw std::string("Could not open file ") + filename;
+        load(fs);
+      }
     }
 }
 

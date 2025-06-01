@@ -243,6 +243,8 @@ public:
    */
   void setScoringType(ScoringType type);
   
+  void saveToTextFile(const std::string &filename) const;
+
   /**
    * Saves the vocabulary into a file. If filename extension contains .yml, opencv YALM format is used. Otherwise, binary format is employed
    * @param filename
