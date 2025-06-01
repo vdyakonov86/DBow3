@@ -3,7 +3,7 @@
 # ----------------------------------------------------------------------------
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 
 PROJECT(DBoW3)
 set(PROJECT_VERSION "0.0.1")
@@ -61,9 +61,21 @@ ELSE()
     SET(OPENCV_VERSION_3 OFF)
 ENDIF()
 
-include_directories(${OpenCV_INCLUDE_DIRS})
+set(onnxruntime_INSTALL_PREFIX /fbow/onnxruntime_gpu)
+set(onnxruntime_INCLUDE_DIRS
+  ${onnxruntime_INSTALL_PREFIX}/include
+  ${onnxruntime_INSTALL_PREFIX}/include/core/providers
+  ${onnxruntime_INSTALL_PREFIX}/include/core/providers/cuda
+)
 
-SET(REQUIRED_LIBRARIES ${REQUIRED_LIBRARIES} ${OpenCV_LIBS})
+find_library(onnxruntime_LIBS NAMES onnxruntime PATHS ${onnxruntime_INSTALL_PREFIX}/lib)
+find_library(onnxruntime_LIBS_CUDA NAMES onnxruntime_providers_cuda PATHS ${onnxruntime_INSTALL_PREFIX}/lib)
+
+# onnx_runtime_cpp
+find_package(ort_utility)
+include_directories(${OpenCV_INCLUDE_DIRS} ${onnxruntime_INCLUDE_DIRS})
+
+SET(REQUIRED_LIBRARIES ${REQUIRED_LIBRARIES} ${OpenCV_LIBS} ${onnxruntime_LIBS} ${onnxruntime_LIBS_CUDA} ort_utility::ort_utility)
 
 # ----------------------------------------------------------------------------
 #   PROJECT CONFIGURATION

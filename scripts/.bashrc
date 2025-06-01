@@ -1,0 +1,1 @@
+export LD_LIBRARY_PATH=/dbow3/onnxruntime_gpu/lib:$LD_LIBRARY_PATH
