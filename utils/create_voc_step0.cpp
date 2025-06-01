@@ -16,6 +16,14 @@
 #endif
 #include "DescManip.h"
 
+#include "ort-superpoint/SuperPoint.hpp"
+#include "ort-superpoint/Utility.hpp"
+#include <onnxruntime_c_api.h>
+#include <onnxruntime_cxx_api.h>
+#include "dir_reader.h"
+
+using KeyPointAndDesc = std::pair<std::vector<cv::KeyPoint>, cv::Mat>;
+
 using namespace DBoW3;
 using namespace std;
 
@@ -46,33 +54,63 @@ vector<string> readImagePaths(int argc,char **argv,int start){
 vector< cv::Mat  >  loadFeatures( std::vector<string> path_to_images,string descriptor="") throw (std::exception){
     //select detector
     cv::Ptr<cv::Feature2D> fdetector;
+    bool use_nn = false;
     if (descriptor=="orb")        fdetector=cv::ORB::create();
     else if (descriptor=="brisk") fdetector=cv::BRISK::create();
-#ifdef OPENCV_VERSION_3
-    else if (descriptor=="akaze") fdetector=cv::AKAZE::create();
-#endif
-#ifdef USE_CONTRIB
-    else if(descriptor=="surf" )  fdetector=cv::xfeatures2d::SURF::create(400, 4, 2, EXTENDED_SURF);
-#endif
+    #ifdef OPENCV_VERSION_3
+        else if (descriptor=="akaze") fdetector=cv::AKAZE::create();
+    #endif
+    #ifdef USE_CONTRIB
+        else if(descriptor=="surf" )  fdetector=cv::xfeatures2d::SURF::create(400, 4, 2, EXTENDED_SURF);
+    #endif
+
+    else if (descriptor == "superpoint") use_nn = true;
 
     else throw std::runtime_error("Invalid descriptor");
-    assert(!descriptor.empty());
-    vector<cv::Mat>    features;
 
-
+    int counter = 1;
+    vector<cv::Mat> features;
     cout << "Extracting   features..." << endl;
-    for(size_t i = 0; i < path_to_images.size(); ++i)
-    {
-        vector<cv::KeyPoint> keypoints;
-        cv::Mat descriptors;
-        cout<<"reading image: "<<path_to_images[i]<<endl;
-        cv::Mat image = cv::imread(path_to_images[i], 0);
-        if(image.empty())throw std::runtime_error("Could not open image"+path_to_images[i]);
-        cout<<"extracting features"<<endl;
-        fdetector->detectAndCompute(image, cv::Mat(), keypoints, descriptors);
-        features.push_back(descriptors);
-        cout<<"done detecting features"<<endl;
+
+    if (use_nn) {
+        Ort::SuperPoint osh("/fbow/super_point.onnx", 0);
+
+        for(size_t i = 0; i < path_to_images.size(); ++i)
+        {
+            cout << "reading image: "<< path_to_images[i] << endl;
+            cv::Mat image = cv::imread(path_to_images[i], 0);
+            if(image.empty())throw std::runtime_error("Could not open image"+path_to_images[i]);
+
+            KeyPointAndDesc results = osh.inference(osh, image);
+            std::vector<cv::KeyPoint> keypoints = results.first;
+            cv::Mat descriptors;
+            cv::normalize(results.second, descriptors, 1.0, 0.0, cv::NORM_L2);
+
+            features.push_back(descriptors);
+            cout << "size: " << path_to_images.size() << "counter: " << counter << endl;
+            counter = counter + 1;
+        }
+
+    } else {
+        assert(!descriptor.empty());
+
+        for(size_t i = 0; i < path_to_images.size(); ++i)
+        {
+            vector<cv::KeyPoint> keypoints;
+            cv::Mat descriptors;
+            cout<<"reading image: "<<path_to_images[i]<<endl;
+            cv::Mat image = cv::imread(path_to_images[i], 0);
+            if(image.empty())throw std::runtime_error("Could not open image"+path_to_images[i]);
+            cout<<"extracting features"<<endl;
+
+            fdetector->detectAndCompute(image, cv::Mat(), keypoints, descriptors);
+
+            features.push_back(descriptors);
+            cout << "size: " << path_to_images.size() << "counter: " << counter << endl;
+            counter = counter + 1;
+        }
     }
+
     return features;
 }
 
@@ -105,18 +143,18 @@ int main(int argc,char **argv)
     try{
         CmdLineParser cml(argc,argv);
         if (cml["-h"] || argc==1){
-            cerr<<"Usage:  descriptor_name output image0 image1 ... \n\t descriptors:brisk,surf,orb(default),akaze(only if using opencv 3)"<<endl;
+            cerr<<"Usage:  descriptor_name output images_dir ... \n\t descriptors:superpoint,brisk,surf,orb(default),akaze(only if using opencv 3)"<<endl;
             return -1;
         }
 
         string descriptor=argv[1];
         string output=argv[2];
 
-        auto images=readImagePaths(argc,argv,3);
+        auto images = DirReader::read(argv[3]);
         vector< cv::Mat   >   features= loadFeatures(images,descriptor);
 
-      //save features to file
-    saveToFile(argv[2],features);
+        //save features to file
+        saveToFile(argv[2],features);
 
     }catch(std::exception &ex){
         cerr<<ex.what()<<endl;

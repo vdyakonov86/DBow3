@@ -36,6 +36,12 @@ vector<cv::Mat> features;
     return features;
 }
 
+ScoringType getScoringTypeFromStr(std::string scoringType) {
+    if (scoringType == "L1_NORM") return ScoringType::L1_NORM;
+    else if (scoringType == "L2_NORM") return ScoringType::L2_NORM;
+    else  cerr << "Unknown scoring_type" << endl;
+}
+
 // ----------------------------------------------------------------------------
 
 int main(int argc,char **argv)
@@ -43,8 +49,8 @@ int main(int argc,char **argv)
 
     try{
         CmdLineParser cml(argc,argv);
-        if (cml["-h"] || argc!=3){
-            cerr<<"Usage:  features output_voc.yml[.gz]"<<endl;
+        if (cml["-h"] || argc!=4){
+            cerr<<"Usage:  features output_voc.yml[.gz] scoring_type"<<endl;
             return -1;
         }
 
@@ -54,7 +60,7 @@ int main(int argc,char **argv)
         const int k = 9;
         const int L = 3;
         const WeightingType weight = TF_IDF;
-        const ScoringType score = L1_NORM;
+        const ScoringType score = getScoringTypeFromStr(argv[3]);
         DBoW3::Vocabulary voc (k, L, weight, score);
 
         cout << "Creating a small " << k << "^" << L << " vocabulary..." << endl;

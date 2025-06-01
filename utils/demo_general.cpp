@@ -21,6 +21,13 @@
 #endif
 #include "DescManip.h"
 
+#include "ort-superpoint/SuperPoint.hpp"
+#include "ort-superpoint/Utility.hpp"
+#include <onnxruntime_c_api.h>
+#include <onnxruntime_cxx_api.h>
+#include "dir_reader.h"
+using KeyPointAndDesc = std::pair<std::vector<cv::KeyPoint>, cv::Mat>;
+
 using namespace DBoW3;
 using namespace std;
 
@@ -51,51 +58,89 @@ vector<string> readImagePaths(int argc,char **argv,int start){
 vector< cv::Mat  >  loadFeatures( std::vector<string> path_to_images,string descriptor="") throw (std::exception){
     //select detector
     cv::Ptr<cv::Feature2D> fdetector;
+    bool use_nn = false;
     if (descriptor=="orb")        fdetector=cv::ORB::create();
     else if (descriptor=="brisk") fdetector=cv::BRISK::create();
-#ifdef OPENCV_VERSION_3
-    else if (descriptor=="akaze") fdetector=cv::AKAZE::create();
-#endif
-#ifdef USE_CONTRIB
-    else if(descriptor=="surf" )  fdetector=cv::xfeatures2d::SURF::create(400, 4, 2, EXTENDED_SURF);
-#endif
+    #ifdef OPENCV_VERSION_3
+        else if (descriptor=="akaze") fdetector=cv::AKAZE::create();
+    #endif
+    #ifdef USE_CONTRIB
+        else if(descriptor=="surf" )  fdetector=cv::xfeatures2d::SURF::create(400, 4, 2, EXTENDED_SURF);
+    #endif
+
+    else if (descriptor == "superpoint") use_nn = true;
 
     else throw std::runtime_error("Invalid descriptor");
-    assert(!descriptor.empty());
-    vector<cv::Mat>    features;
 
-
+    int counter = 1;
+    vector<cv::Mat> features;
     cout << "Extracting   features..." << endl;
-    for(size_t i = 0; i < path_to_images.size(); ++i)
-    {
-        vector<cv::KeyPoint> keypoints;
-        cv::Mat descriptors;
-        cout<<"reading image: "<<path_to_images[i]<<endl;
-        cv::Mat image = cv::imread(path_to_images[i], 0);
-        if(image.empty())throw std::runtime_error("Could not open image"+path_to_images[i]);
-        cout<<"extracting features"<<endl;
-        fdetector->detectAndCompute(image, cv::Mat(), keypoints, descriptors);
-        features.push_back(descriptors);
-        cout<<"done detecting features"<<endl;
+
+    if (use_nn) {
+        Ort::SuperPoint osh("/fbow/super_point.onnx", 0);
+
+        for(size_t i = 0; i < path_to_images.size(); ++i)
+        {
+            cout << "reading image: "<< path_to_images[i] << endl;
+            cv::Mat image = cv::imread(path_to_images[i], 0);
+            if(image.empty())throw std::runtime_error("Could not open image"+path_to_images[i]);
+
+            KeyPointAndDesc results = osh.inference(osh, image);
+            std::vector<cv::KeyPoint> keypoints = results.first;
+            cv::Mat descriptors;
+            cv::normalize(results.second, descriptors, 1.0, 0.0, cv::NORM_L2);
+
+            features.push_back(descriptors);
+            cout << "size: " << path_to_images.size() << "counter: " << counter << endl;
+            counter = counter + 1;
+        }
+
+    } else {
+        assert(!descriptor.empty());
+
+        for(size_t i = 0; i < path_to_images.size(); ++i)
+        {
+            vector<cv::KeyPoint> keypoints;
+            cv::Mat descriptors;
+            cout<<"reading image: "<<path_to_images[i]<<endl;
+            cv::Mat image = cv::imread(path_to_images[i], 0);
+            if(image.empty())throw std::runtime_error("Could not open image"+path_to_images[i]);
+            cout<<"extracting features"<<endl;
+
+            fdetector->detectAndCompute(image, cv::Mat(), keypoints, descriptors);
+
+            features.push_back(descriptors);
+            cout << "size: " << path_to_images.size() << "counter: " << counter << endl;
+            counter = counter + 1;
+        }
     }
+
     return features;
+}
+
+ScoringType getScoringTypeFromStr(std::string scoringType) {
+    if (scoringType == "L1_NORM") return ScoringType::L1_NORM;
+    else if (scoringType == "L2_NORM") return ScoringType::L2_NORM;
+    else  cerr << "Unknown scoring_type" << endl;
 }
 
 // ----------------------------------------------------------------------------
 
-void testVocCreation(const vector<cv::Mat> &features)
+void testVocCreation(const vector<cv::Mat> &features, ScoringType score, std::string out_path)
 {
     // branching factor and depth levels
     const int k = 9;
     const int L = 3;
     const WeightingType weight = TF_IDF;
-    const ScoringType score = L1_NORM;
 
     DBoW3::Vocabulary voc(k, L, weight, score);
 
     cout << "Creating a small " << k << "^" << L << " vocabulary..." << endl;
     voc.create(features);
     cout << "... done!" << endl;
+
+    cout << "getDescritorSize: " << voc.getDescritorSize() << endl;
+    cout << "getDescritorType: " << voc.getDescritorType() << endl;
 
     cout << "Vocabulary information: " << endl
          << voc << endl << endl;
@@ -117,18 +162,18 @@ void testVocCreation(const vector<cv::Mat> &features)
 
     // save the vocabulary to disk
     cout << endl << "Saving vocabulary..." << endl;
-    voc.save("small_voc.yml.gz");
+    voc.save(out_path);
     cout << "Done" << endl;
 }
 
 ////// ----------------------------------------------------------------------------
 
-void testDatabase(const  vector<cv::Mat > &features)
+void testDatabase(const  vector<cv::Mat > &features, std::string voc_path)
 {
     cout << "Creating a small database..." << endl;
 
     // load the vocabulary from disk
-    Vocabulary voc("small_voc.yml.gz");
+    Vocabulary voc(voc_path);
 
     Database db(voc, false, 0); // false = do not use direct index
     // (so ignore the last param)
@@ -172,6 +217,25 @@ void testDatabase(const  vector<cv::Mat > &features)
     cout << "... done! This is: " << endl << db2 << endl;
 }
 
+void saveToFile(string filename,const vector<cv::Mat> &features){
+
+    //test it is not created
+    std::ifstream ifile(filename);
+    if (ifile.is_open()){cerr<<"ERROR::: Output File "<<filename<<" already exists!!!!!"<<endl;exit(0);}
+    std::ofstream ofile(filename);
+    if (!ofile.is_open()){cerr<<"could not open output file"<<endl;exit(0);}
+    uint32_t size=features.size();
+    ofile.write((char*)&size,sizeof(size));
+    for(auto &f:features){
+        if( !f.isContinuous()){
+            cerr<<"Matrices should be continuous"<<endl;exit(0);
+        }
+        uint32_t aux=f.cols; ofile.write( (char*)&aux,sizeof(aux));
+          aux=f.rows; ofile.write( (char*)&aux,sizeof(aux));
+          aux=f.type(); ofile.write( (char*)&aux,sizeof(aux));
+        ofile.write( (char*)f.ptr<uchar>(0),f.total()*f.elemSize());
+    }
+}
 
 // ----------------------------------------------------------------------------
 
@@ -180,19 +244,23 @@ int main(int argc,char **argv)
 
     try{
         CmdLineParser cml(argc,argv);
-        if (cml["-h"] || argc<=2){
-            cerr<<"Usage:  descriptor_name     image0 image1 ... \n\t descriptors:brisk,surf,orb ,akaze(only if using opencv 3)"<<endl;
+        if (cml["-h"] || argc<=3){
+            cerr<<"Usage:  descriptor_name out_features images_dir scoring_type out_voc.yml[.gz] ... \n\t descriptors:brisk,surf,orb ,akaze(only if using opencv 3)"<<endl;
              return -1;
         }
 
-        string descriptor=argv[1];
+        string descriptor = argv[1];
+        auto out_features = argv[2];
+        auto images = DirReader::read(argv[3]);
+        auto scoring_type = getScoringTypeFromStr(argv[4]);
+        auto out_voc = argv[5];
+        vector<cv::Mat> features = loadFeatures(images, descriptor);
 
-        auto images=readImagePaths(argc,argv,2);
-        vector< cv::Mat   >   features= loadFeatures(images,descriptor);
-        testVocCreation(features);
+        //save features to file
+        saveToFile(argv[2],features);
 
-
-        testDatabase(features);
+        testVocCreation(features, scoring_type, out_voc);
+        testDatabase(features, out_voc);
 
     }catch(std::exception &ex){
         cerr<<ex.what()<<endl;
