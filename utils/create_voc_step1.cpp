@@ -57,13 +57,13 @@ int main(int argc,char **argv)
 
         auto features=readFeaturesFromFile(argv[1]);
 
-        const int k = 9;
-        const int L = 3;
+        const int k = 10;
+        const int L = 6;
         const WeightingType weight = TF_IDF;
         const ScoringType score = getScoringTypeFromStr(argv[3]);
         DBoW3::Vocabulary voc (k, L, weight, score);
 
-        cout << "Creating a small " << k << "^" << L << " vocabulary..." << endl;
+        cout << "Creating a " << k << "^" << L << " vocabulary..." << endl;
         voc.create(features);
         cerr<<"Saving "<<argv[2]<<endl;
         voc.save(argv[2]);
