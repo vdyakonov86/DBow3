@@ -77,7 +77,7 @@ vector< cv::Mat  >  loadFeatures( std::vector<string> path_to_images,string desc
     cout << "Extracting   features..." << endl;
 
     if (use_nn) {
-        Ort::SuperPoint osh("/fbow/super_point.onnx", 0);
+        Ort::SuperPoint osh("/dbow3/super_point.onnx", 1);
 
         for(size_t i = 0; i < path_to_images.size(); ++i)
         {
@@ -87,10 +87,20 @@ vector< cv::Mat  >  loadFeatures( std::vector<string> path_to_images,string desc
 
             KeyPointAndDesc results = osh.inference(osh, image);
             std::vector<cv::KeyPoint> keypoints = results.first;
-            cv::Mat descriptors;
-            cv::normalize(results.second, descriptors, 1.0, 0.0, cv::NORM_L2);
+            // cv::Mat descriptors;
+            // cv::normalize(results.second, descriptors, 1.0, 0.0, cv::NORM_L2);
 
-            features.push_back(descriptors);
+             for (int i=0; i < results.second.rows; i++) {
+                cv::normalize(results.second.row(i), results.second.row(i), 1.0, 0.0, cv::NORM_L2);
+                // Вычисляем L2-норму дескриптора
+                double norm = cv::norm(results.second.row(i), cv::NORM_L2);
+                // Проверяем, близка ли норма к 1 (с учетом погрешности)
+                bool is_normalized = std::abs(norm - 1.0) < 1e-5;
+                std::cout << "Normalized descriptor check: " << is_normalized << std::endl; 
+            }
+            features.push_back(results.second);
+
+            // features.push_back(descriptors);
             cout << "size: " << path_to_images.size() << "counter: " << counter << endl;
             counter = counter + 1;
         }
