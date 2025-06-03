@@ -75,7 +75,7 @@ vector< cv::Mat  >  loadFeatures( std::vector<string> path_to_images,string desc
     auto log_freq = 20;
 
     if (use_nn) {
-        Ort::SuperPoint osh("/fbow/super_point.onnx", 0);
+        Ort::SuperPoint osh("/dbow3/super_point.onnx", 0);
 
         for(size_t i = 0; i < path_to_images.size(); ++i)
         {
