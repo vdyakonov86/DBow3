@@ -70,14 +70,15 @@ vector< cv::Mat  >  loadFeatures( std::vector<string> path_to_images,string desc
 
     int counter = 1;
     vector<cv::Mat> features;
-    cout << "Extracting   features..." << endl;
+    cout << "Extracting features..." << endl;
+    auto images_num = path_to_images.size();
+    auto log_freq = 20;
 
     if (use_nn) {
         Ort::SuperPoint osh("/fbow/super_point.onnx", 0);
 
         for(size_t i = 0; i < path_to_images.size(); ++i)
         {
-            cout << "reading image: "<< path_to_images[i] << endl;
             cv::Mat image = cv::imread(path_to_images[i], 0);
             if(image.empty())throw std::runtime_error("Could not open image"+path_to_images[i]);
 
@@ -87,7 +88,8 @@ vector< cv::Mat  >  loadFeatures( std::vector<string> path_to_images,string desc
             cv::normalize(results.second, descriptors, 1.0, 0.0, cv::NORM_L2);
 
             features.push_back(descriptors);
-            cout << "size: " << path_to_images.size() << "counter: " << counter << endl;
+            if (counter % log_freq == 0)
+                cout << "images_num: " << images_num << "counter: " << counter << endl;
             counter = counter + 1;
         }
 
@@ -106,7 +108,8 @@ vector< cv::Mat  >  loadFeatures( std::vector<string> path_to_images,string desc
             fdetector->detectAndCompute(image, cv::Mat(), keypoints, descriptors);
 
             features.push_back(descriptors);
-            cout << "size: " << path_to_images.size() << "counter: " << counter << endl;
+            if (counter % log_freq == 0)
+                cout << "images_num: " << images_num << "counter: " << counter << endl;
             counter = counter + 1;
         }
     }
