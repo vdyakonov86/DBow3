@@ -61,7 +61,7 @@ ELSE()
     SET(OPENCV_VERSION_3 OFF)
 ENDIF()
 
-set(onnxruntime_INSTALL_PREFIX /fbow/onnxruntime_gpu)
+set(onnxruntime_INSTALL_PREFIX /dbow3/onnxruntime_gpu)
 set(onnxruntime_INCLUDE_DIRS
   ${onnxruntime_INSTALL_PREFIX}/include
   ${onnxruntime_INSTALL_PREFIX}/include/core/providers
